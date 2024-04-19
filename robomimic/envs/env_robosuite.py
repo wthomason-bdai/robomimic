@@ -303,8 +303,8 @@ class EnvRobosuite(EB.EnvBase):
                 np_voxels[0, indices[:, 0], indices[:, 1], indices[:, 2]] = 1
                 np_voxels[1:, indices[:, 0], indices[:, 1], indices[:, 2]] = colors.T * 255
 
-            np_voxels = np.moveaxis(np_voxels, [0, 1, 2, 3], [0, 3, 2, 1])
-            np_voxels = np.flip(np_voxels, (1, 2))
+            # np_voxels = np.moveaxis(np_voxels, [0, 1, 2, 3], [0, 3, 2, 1])
+            # np_voxels = np.flip(np_voxels, (1, 2))
 
             # import matplotlib.pyplot as plt
             # from mpl_toolkits.mplot3d import Axes3D
