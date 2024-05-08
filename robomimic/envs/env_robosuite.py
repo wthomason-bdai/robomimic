@@ -232,8 +232,9 @@ class EnvRobosuite(EB.EnvBase):
                 if self.postprocess_visual_obs:
                     ret[k] = ObsUtils.process_obs(obs=ret[k], obs_key=k)
             if (k in ObsUtils.OBS_KEYS_TO_MODALITIES) and ObsUtils.key_is_obs_modality(key=k, obs_modality="depth"):
-                ret[k] = di[k][::-1]
-                ret[k] = get_real_depth_map(self.env.sim, ret[k])
+                depth_map = di[k][::-1]
+                depth_map = np.clip(depth_map, 0, 1)
+                ret[k] = get_real_depth_map(self.env.sim, depth_map)
                 if self.postprocess_visual_obs:
                     ret[k] = ObsUtils.process_obs(obs=ret[k], obs_key=k)
 
@@ -263,6 +264,7 @@ class EnvRobosuite(EB.EnvBase):
                 ext_mat = get_camera_extrinsic_matrix(self.env.sim, camera_name)
                 int_mat = get_camera_intrinsic_matrix(self.env.sim, camera_name, cam_height, cam_width)
                 depth = di[f'{camera_name}_depth'][::-1]
+                depth = np.clip(depth, 0, 1)
                 depth = get_real_depth_map(self.env.sim, depth)
                 depth = depth[:, :, 0]
                 color = di[f'{camera_name}_image'][::-1]
