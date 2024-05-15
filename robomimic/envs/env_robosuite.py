@@ -128,6 +128,17 @@ class EnvRobosuite(EB.EnvBase):
                 if ("joint_pos" in ob_name) or ("eef_vel" in ob_name):
                     self.env.modify_observable(observable_name=ob_name, attribute="active", modifier=True)
 
+        center = np.array([0, 0, 0.7])
+        center[:2] = self.env.table_offset[:2]
+        self.ws_size = 0.6
+        if env_name.startswith('Kitchen_'):
+            self.ws_size = 0.7
+        self.workspace = np.array([
+            [center[0] - self.ws_size/2, center[0] + self.ws_size/2],
+            [center[1] - self.ws_size/2, center[1] + self.ws_size/2],
+            [center[2], center[2] + self.ws_size]
+        ])
+
     def step(self, action):
         """
         Step in the environment with an action.
@@ -242,13 +253,7 @@ class EnvRobosuite(EB.EnvBase):
         ret["object"] = np.array(di["object-state"])
 
         if self.env.use_camera_obs:
-            center = np.array([0, 0, 0.7])
-            ws_size = 0.6
-            workspace = np.array([
-                [center[0] - ws_size/2, center[0] + ws_size/2],
-                [center[1] - ws_size/2, center[1] + ws_size/2],
-                [center[2], center[2] + ws_size]
-            ])
+            workspace = self.workspace
 
             # voxel_bound = np.array([
             #     [center[0] - ws_size/2, center[1] - ws_size/2, center[2] - 0.05],
@@ -289,7 +294,7 @@ class EnvRobosuite(EB.EnvBase):
 
                 all_pcds += pcd_o3d
 
-            voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud_within_bounds(all_pcds, voxel_size=ws_size/voxel_size+1e-4, min_bound=voxel_bound[0], max_bound=voxel_bound[1])
+            voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud_within_bounds(all_pcds, voxel_size=self.ws_size/voxel_size+1e-4, min_bound=voxel_bound[0], max_bound=voxel_bound[1])
             voxels = voxel_grid.get_voxels()  # returns list of voxels
             if len(voxels) == 0:
                 np_voxels = np.zeros([4, voxel_size, voxel_size, voxel_size], dtype=np.uint8)
