@@ -132,7 +132,7 @@ class EnvRobosuite(EB.EnvBase):
         pc_center = np.array([0, 0, 0.7])
         if hasattr(self.env, 'table_offset'):
             voxel_center[:2] = self.env.table_offset[:2]
-            pc_center = self.env.table_offset.copy()
+            pc_center = np.array(self.env.table_offset)
             pc_center[2] = pc_center[2] + 0.02
         self.ws_size = 0.6
         if env_name.startswith('Kitchen_'):
