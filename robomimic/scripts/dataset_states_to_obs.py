@@ -148,10 +148,14 @@ def extract_trajectory(
 def dataset_states_to_obs(args):
     # create environment to use for data processing
     env_meta = FileUtils.get_env_metadata_from_dataset(dataset_path=args.dataset)
+    if env_meta['env_name'].startswith('PickPlace_'):
+        camera_names=['birdview', 'agentview', 'robot0_eye_in_hand']
+    else:
+        camera_names=['birdview', 'agentview', 'sideview', 'robot0_eye_in_hand']
     env = EnvUtils.create_env_for_data_processing(
         env_meta=env_meta,
         # camera_names=['frontview', 'birdview', 'agentview', 'sideview', 'agentview_full', 'robot0_robotview', 'robot0_eye_in_hand'], 
-        camera_names=['birdview', 'agentview', 'sideview', 'robot0_eye_in_hand'], 
+        camera_names=camera_names, 
         camera_height=args.camera_height, 
         camera_width=args.camera_width, 
         reward_shaping=args.shaped,

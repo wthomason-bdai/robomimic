@@ -129,10 +129,13 @@ class EnvRobosuite(EB.EnvBase):
                     self.env.modify_observable(observable_name=ob_name, attribute="active", modifier=True)
 
         center = np.array([0, 0, 0.7])
-        center[:2] = self.env.table_offset[:2]
+        if hasattr(self, 'table_offset'):
+            center[:2] = self.env.table_offset[:2]
         self.ws_size = 0.6
         if env_name.startswith('Kitchen_'):
             self.ws_size = 0.7
+        elif env_name.startswith('PickPlace_'):
+            self.ws_size = 1.1
         self.workspace = np.array([
             [center[0] - self.ws_size/2, center[0] + self.ws_size/2],
             [center[1] - self.ws_size/2, center[1] + self.ws_size/2],
