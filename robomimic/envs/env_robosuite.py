@@ -128,18 +128,29 @@ class EnvRobosuite(EB.EnvBase):
                 if ("joint_pos" in ob_name) or ("eef_vel" in ob_name):
                     self.env.modify_observable(observable_name=ob_name, attribute="active", modifier=True)
 
-        center = np.array([0, 0, 0.7])
+        voxel_center = np.array([0, 0, 0.7])
+        pc_center = np.array([0, 0, 0.7])
         if hasattr(self.env, 'table_offset'):
-            center[:2] = self.env.table_offset[:2]
+            voxel_center[:2] = self.env.table_offset[:2]
+            pc_center = self.env.table_offset.copy()
+            pc_center[2] = pc_center[2] + 0.02
         self.ws_size = 0.6
         if env_name.startswith('Kitchen_'):
             self.ws_size = 0.7
+            pc_center = self.env.table_offset
         elif env_name.startswith('PickPlace_'):
+            pc_center = np.array([0, 0, 0.83])
             self.ws_size = 1.1
-        self.workspace = np.array([
-            [center[0] - self.ws_size/2, center[0] + self.ws_size/2],
-            [center[1] - self.ws_size/2, center[1] + self.ws_size/2],
-            [center[2], center[2] + self.ws_size]
+
+        self.voxel_workspace = np.array([
+            [voxel_center[0] - self.ws_size/2, voxel_center[0] + self.ws_size/2],
+            [voxel_center[1] - self.ws_size/2, voxel_center[1] + self.ws_size/2],
+            [voxel_center[2], voxel_center[2] + self.ws_size]
+        ])
+        self.pc_workspace = np.array([
+            [pc_center[0] - self.ws_size/2, pc_center[0] + self.ws_size/2],
+            [pc_center[1] - self.ws_size/2, pc_center[1] + self.ws_size/2],
+            [pc_center[2], pc_center[2] + self.ws_size]
         ])
 
     def step(self, action):
@@ -256,7 +267,7 @@ class EnvRobosuite(EB.EnvBase):
         ret["object"] = np.array(di["object-state"])
 
         if self.env.use_camera_obs:
-            workspace = self.workspace
+            workspace = self.voxel_workspace
 
             # voxel_bound = np.array([
             #     [center[0] - ws_size/2, center[1] - ws_size/2, center[2] - 0.05],
@@ -339,7 +350,31 @@ class EnvRobosuite(EB.EnvBase):
             # plt.close()
 
             ret['voxels'] = np_voxels
-            # ret['pcd'] = all_pcds
+
+            bounding_box = o3d.geometry.AxisAlignedBoundingBox(self.pc_workspace.T[0], self.pc_workspace.T[1])
+            cropped_pcd = all_pcds.crop(bounding_box)
+            sampled_pcds = cropped_pcd.farthest_point_down_sample(1024)
+            xyz = np.asarray(sampled_pcds.points)
+            color = np.asarray(sampled_pcds.colors)
+
+            # import matplotlib.pyplot as plt
+            # from mpl_toolkits.mplot3d import Axes3D
+            # fig = plt.figure()
+            # ax = fig.add_subplot(111, projection='3d')
+
+            # # Scatter plot
+            # ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:, 2], c=color, s=20)
+
+            # # Labels
+            # ax.set_xlabel('X Label')
+            # ax.set_ylabel('Y Label')
+            # ax.set_zlabel('Z Label')
+
+            # # Save the plot
+            # plt.savefig('1.png')
+            # plt.close()
+
+            ret['point_cloud'] = np.concatenate([xyz, color], 1)
 
         if self._is_v1:
             for robot in self.env.robots:
