@@ -353,6 +353,17 @@ class EnvRobosuite(EB.EnvBase):
 
             bounding_box = o3d.geometry.AxisAlignedBoundingBox(self.pc_workspace.T[0], self.pc_workspace.T[1])
             cropped_pcd = all_pcds.crop(bounding_box)
+            if len(cropped_pcd.points) < 1024:
+                # random upsample to 1024
+                num_pad = 1024 - len(cropped_pcd.points)
+                indices = np.random.choice(len(cropped_pcd.points), num_pad)
+                padded_xyz = np.asarray(cropped_pcd.points)[indices]
+                padded_color = np.asarray(cropped_pcd.colors)[indices]
+                xyz = np.concatenate([np.asarray(cropped_pcd.points), padded_xyz], 0)
+                color = np.concatenate([np.asarray(cropped_pcd.colors), padded_color], 0)
+                cropped_pcd = o3d.geometry.PointCloud()
+                cropped_pcd.points = o3d.utility.Vector3dVector(xyz)
+                cropped_pcd.colors = o3d.utility.Vector3dVector(color)
             sampled_pcds = cropped_pcd.farthest_point_down_sample(1024)
             xyz = np.asarray(sampled_pcds.points)
             color = np.asarray(sampled_pcds.colors)
