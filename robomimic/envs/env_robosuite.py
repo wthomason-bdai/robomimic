@@ -353,6 +353,10 @@ class EnvRobosuite(EB.EnvBase):
 
             bounding_box = o3d.geometry.AxisAlignedBoundingBox(self.pc_workspace.T[0], self.pc_workspace.T[1])
             cropped_pcd = all_pcds.crop(bounding_box)
+            if len(cropped_pcd.points) == 0:
+                # create fake points
+                cropped_pcd.points = o3d.utility.Vector3dVector(np.array([[0., 0., 0.]]))
+                cropped_pcd.colors = o3d.utility.Vector3dVector(np.array([[0., 0., 0.]]))
             if len(cropped_pcd.points) < 1024:
                 # random upsample to 1024
                 num_pad = 1024 - len(cropped_pcd.points)
