@@ -55,6 +55,9 @@ def np2o3d(pcd, color=None):
         pcd_o3d.colors = o3d.utility.Vector3dVector(color)
     return pcd_o3d
 
+def labels_to_colors(labels, cm):
+  return cm(labels)[:, 0:3]
+
 class EnvRobosuite(EB.EnvBase):
     """Wrapper class for robosuite environments (https://github.com/ARISE-Initiative/robosuite)"""
     def __init__(
@@ -277,6 +280,7 @@ class EnvRobosuite(EB.EnvBase):
             voxel_size = 64
 
             all_pcds = o3d.geometry.PointCloud()
+            segmented_pcds = o3d.geometry.PointCloud()
             for cam_idx, camera_name in enumerate(self.env.camera_names):
                 cam_height = self.env.camera_heights[cam_idx]
                 cam_width = self.env.camera_widths[cam_idx]
@@ -307,6 +311,20 @@ class EnvRobosuite(EB.EnvBase):
                 pcd_o3d = np2o3d(trans_pcd[mask], color.reshape(-1, 3)[mask].astype(np.float64) / 255)
 
                 all_pcds += pcd_o3d
+
+                # HACK: Hardcoding in instance-level segmentation for now
+                camera_segmentation_key = f"{camera_name}_segmentation_instance"
+                if camera_segmentation_key not in di:
+                  continue
+
+                # NOTE: Assuming same format as depth/color
+                segmentation_labels = di[camera_segmentation_key][::-1]
+                # NOTE: Copy so we can override the colors
+                segmented_pc = o3d.geometry.PointCloud(pcd_o3d)
+                # HACK: Repeat because Open3d expects a 3-vector for colors and doesn't seem to
+                # offer any alternative...
+                segmented_pc.colors = o3d.utility.Vector3dVector(np.repeat(segmentation_labels, 3).reshape(-1, 3)[mask])
+                segmented_pcds += segmented_pc
 
             voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud_within_bounds(all_pcds, voxel_size=self.ws_size/voxel_size+1e-4, min_bound=voxel_bound[0], max_bound=voxel_bound[1])
             voxels = voxel_grid.get_voxels()  # returns list of voxels
@@ -353,10 +371,13 @@ class EnvRobosuite(EB.EnvBase):
 
             bounding_box = o3d.geometry.AxisAlignedBoundingBox(self.pc_workspace.T[0], self.pc_workspace.T[1])
             cropped_pcd = all_pcds.crop(bounding_box)
+            cropped_segmented_pcd = segmented_pcds.crop(bounding_box)
             if len(cropped_pcd.points) == 0:
                 # create fake points
                 cropped_pcd.points = o3d.utility.Vector3dVector(np.array([[0., 0., 0.]]))
                 cropped_pcd.colors = o3d.utility.Vector3dVector(np.array([[0., 0., 0.]]))
+                cropped_segmented_pcd = None
+
             if len(cropped_pcd.points) < 1024:
                 # random upsample to 1024
                 num_pad = 1024 - len(cropped_pcd.points)
@@ -368,17 +389,27 @@ class EnvRobosuite(EB.EnvBase):
                 cropped_pcd = o3d.geometry.PointCloud()
                 cropped_pcd.points = o3d.utility.Vector3dVector(xyz)
                 cropped_pcd.colors = o3d.utility.Vector3dVector(color)
+                cropped_segmented_pcd = None
             sampled_pcds = cropped_pcd.farthest_point_down_sample(1024)
+            if cropped_segmented_pcd is not None and len(cropped_segmented_pcd.points) > 0:
+              sampled_segmented_pcds = cropped_segmented_pcd.farthest_point_down_sample(1024)
+            else:
+              sampled_segmented_pcds = None
+
+            # TODO: How to properly handle up/downsampling with segmentation?
             xyz = np.asarray(sampled_pcds.points)
             color = np.asarray(sampled_pcds.colors)
 
             # import matplotlib.pyplot as plt
             # from mpl_toolkits.mplot3d import Axes3D
             # fig = plt.figure()
-            # ax = fig.add_subplot(111, projection='3d')
+            # ax = fig.add_subplot(211, projection='3d')
 
+            # segmentation_colors = labels_to_colors(np.asarray(sampled_segmented_pcds.colors)[:, :1].astype(int), plt.get_cmap("Set1"))
             # # Scatter plot
-            # ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:, 2], c=color, s=20)
+            # ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:, 2], c=color, s=1)
+            # seg_ax = fig.add_subplot(212, projection='3d')
+            # seg_ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:, 2], c=segmentation_colors, s=1)
 
             # # Labels
             # ax.set_xlabel('X Label')
@@ -386,10 +417,14 @@ class EnvRobosuite(EB.EnvBase):
             # ax.set_zlabel('Z Label')
 
             # # Save the plot
-            # plt.savefig('1.png')
+            # plt.savefig('segmentation.png')
             # plt.close()
+            # raise RuntimeError
 
             ret['point_cloud'] = np.concatenate([xyz, color], 1)
+            if cropped_segmented_pcd is not None and len(cropped_segmented_pcd.points) > 0:
+              assert sampled_segmented_pcds is not None
+              ret['segmented_point_cloud'] = np.concatenate([xyz, np.asarray(sampled_segmented_pcds.colors)[:, :1]], 1)
 
         if self._is_v1:
             for robot in self.env.robots:
