@@ -421,10 +421,11 @@ class EnvRobosuite(EB.EnvBase):
             # plt.close()
             # raise RuntimeError
 
-            ret['point_cloud'] = np.concatenate([xyz, color], 1)
             if cropped_segmented_pcd is not None and len(cropped_segmented_pcd.points) > 0:
               assert sampled_segmented_pcds is not None
-              ret['segmented_point_cloud'] = np.concatenate([xyz, np.asarray(sampled_segmented_pcds.colors)[:, :1]], 1)
+              ret['point_cloud'] = np.concatenate([xyz, color, np.asarray(sampled_segmented_pcds.colors)[:, :1]], 1)
+            else:
+              ret['point_cloud'] = np.concatenate([xyz, color, np.zeros((xyz.shape[0], 1))], 1)
 
         if self._is_v1:
             for robot in self.env.robots:
