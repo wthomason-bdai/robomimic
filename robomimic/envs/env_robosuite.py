@@ -3,13 +3,19 @@ This file contains the robosuite environment wrapper that is used
 to provide a standardized environment API for training policies and interacting
 with metadata present in datasets.
 """
+
 import json
 import numpy as np
 from copy import deepcopy
 import open3d as o3d
 
 import robosuite
-from robosuite.utils.camera_utils import get_real_depth_map, get_camera_extrinsic_matrix, get_camera_intrinsic_matrix
+from robosuite.utils.camera_utils import (
+    get_real_depth_map,
+    get_camera_extrinsic_matrix,
+    get_camera_intrinsic_matrix,
+)
+
 try:
     # this is needed for ensuring robosuite can find the additional mimicgen environments (see https://mimicgen.github.io)
     import mimicgen_envs
@@ -22,9 +28,11 @@ import robomimic.envs.env_base as EB
 # protect against missing mujoco-py module, since robosuite might be using mujoco-py or DM backend
 try:
     import mujoco_py
+
     MUJOCO_EXCEPTIONS = [mujoco_py.builder.MujocoException]
 except ImportError:
     MUJOCO_EXCEPTIONS = []
+
 
 def depth2fgpcd(depth, mask, cam_params):
     # depth: (h, w)
@@ -43,6 +51,7 @@ def depth2fgpcd(depth, mask, cam_params):
     fgpcd[:, 2] = depth[mask]
     return fgpcd
 
+
 def np2o3d(pcd, color=None):
     # pcd: (n, 3)
     # color: (n, 3)
@@ -55,18 +64,21 @@ def np2o3d(pcd, color=None):
         pcd_o3d.colors = o3d.utility.Vector3dVector(color)
     return pcd_o3d
 
+
 def labels_to_colors(labels, cm):
-  return cm(labels)[:, 0:3]
+    return cm(labels)[:, 0:3]
+
 
 class EnvRobosuite(EB.EnvBase):
     """Wrapper class for robosuite environments (https://github.com/ARISE-Initiative/robosuite)"""
+
     def __init__(
-        self, 
-        env_name, 
-        render=False, 
-        render_offscreen=False, 
-        use_image_obs=False, 
-        postprocess_visual_obs=True, 
+        self,
+        env_name,
+        render=False,
+        render_offscreen=False,
+        use_image_obs=False,
+        postprocess_visual_obs=True,
         **kwargs,
     ):
         """
@@ -90,9 +102,11 @@ class EnvRobosuite(EB.EnvBase):
         self.postprocess_visual_obs = postprocess_visual_obs
 
         # robosuite version check
-        self._is_v1 = (robosuite.__version__.split(".")[0] == "1")
+        self._is_v1 = robosuite.__version__.split(".")[0] == "1"
         if self._is_v1:
-            assert (int(robosuite.__version__.split(".")[1]) >= 2), "only support robosuite v0.3 and v1.2+"
+            assert (
+                int(robosuite.__version__.split(".")[1]) >= 2
+            ), "only support robosuite v0.3 and v1.2+"
 
         kwargs = deepcopy(kwargs)
 
@@ -112,6 +126,7 @@ class EnvRobosuite(EB.EnvBase):
                 # ensure that we select the correct GPU device for rendering by testing for EGL rendering
                 # NOTE: this package should be installed from this link (https://github.com/StanfordVL/egl_probe)
                 import egl_probe
+
                 valid_gpu_devices = egl_probe.get_available_devices()
                 if len(valid_gpu_devices) > 0:
                     kwargs["render_gpu_device_id"] = valid_gpu_devices[0]
@@ -119,7 +134,7 @@ class EnvRobosuite(EB.EnvBase):
             # make sure gripper visualization is turned off (we almost always want this for learning)
             kwargs["gripper_visualization"] = False
             del kwargs["camera_depths"]
-            kwargs["camera_depth"] = False # rename kwarg
+            kwargs["camera_depth"] = False  # rename kwarg
 
         self._env_name = env_name
         self._init_kwargs = deepcopy(kwargs)
@@ -129,32 +144,38 @@ class EnvRobosuite(EB.EnvBase):
             # Make sure joint position observations and eef vel observations are active
             for ob_name in self.env.observation_names:
                 if ("joint_pos" in ob_name) or ("eef_vel" in ob_name):
-                    self.env.modify_observable(observable_name=ob_name, attribute="active", modifier=True)
+                    self.env.modify_observable(
+                        observable_name=ob_name, attribute="active", modifier=True
+                    )
 
         voxel_center = np.array([0, 0, 0.7])
         pc_center = np.array([0, 0, 0.7])
-        if hasattr(self.env, 'table_offset'):
+        if hasattr(self.env, "table_offset"):
             voxel_center[:2] = self.env.table_offset[:2]
             pc_center = np.array(self.env.table_offset)
             pc_center[2] = pc_center[2] + 0.02
         self.ws_size = 0.6
-        if env_name.startswith('Kitchen_'):
+        if env_name.startswith("Kitchen_"):
             self.ws_size = 0.7
             pc_center = self.env.table_offset
-        elif env_name.startswith('PickPlace_'):
+        elif env_name.startswith("PickPlace_"):
             pc_center = np.array([0, 0, 0.83])
             self.ws_size = 1.1
 
-        self.voxel_workspace = np.array([
-            [voxel_center[0] - self.ws_size/2, voxel_center[0] + self.ws_size/2],
-            [voxel_center[1] - self.ws_size/2, voxel_center[1] + self.ws_size/2],
-            [voxel_center[2], voxel_center[2] + self.ws_size]
-        ])
-        self.pc_workspace = np.array([
-            [pc_center[0] - self.ws_size/2, pc_center[0] + self.ws_size/2],
-            [pc_center[1] - self.ws_size/2, pc_center[1] + self.ws_size/2],
-            [pc_center[2], pc_center[2] + self.ws_size]
-        ])
+        self.voxel_workspace = np.array(
+            [
+                [voxel_center[0] - self.ws_size / 2, voxel_center[0] + self.ws_size / 2],
+                [voxel_center[1] - self.ws_size / 2, voxel_center[1] + self.ws_size / 2],
+                [voxel_center[2], voxel_center[2] + self.ws_size],
+            ]
+        )
+        self.pc_workspace = np.array(
+            [
+                [pc_center[0] - self.ws_size / 2, pc_center[0] + self.ws_size / 2],
+                [pc_center[1] - self.ws_size / 2, pc_center[1] + self.ws_size / 2],
+                [pc_center[2], pc_center[2] + self.ws_size],
+            ]
+        )
 
     def step(self, action):
         """
@@ -191,7 +212,7 @@ class EnvRobosuite(EB.EnvBase):
             state (dict): current simulator state that contains one or more of:
                 - states (np.ndarray): initial state of the mujoco environment
                 - model (str): mujoco scene xml
-        
+
         Returns:
             observation (dict): observation dictionary after setting the simulator state (only
                 if "states" is in @state)
@@ -202,6 +223,7 @@ class EnvRobosuite(EB.EnvBase):
             robosuite_version_id = int(robosuite.__version__.split(".")[1])
             if robosuite_version_id <= 3:
                 from robosuite.utils.mjcf_utils import postprocess_model_xml
+
                 xml = postprocess_model_xml(state["model"])
             else:
                 # v1.4 and above use the class-based edit_model_xml function
@@ -210,8 +232,10 @@ class EnvRobosuite(EB.EnvBase):
             self.env.sim.reset()
             if not self._is_v1:
                 # hide teleop visualization after restoring from model
-                self.env.sim.model.site_rgba[self.env.eef_site_id] = np.array([0., 0., 0., 0.])
-                self.env.sim.model.site_rgba[self.env.eef_cylinder_id] = np.array([0., 0., 0., 0.])
+                self.env.sim.model.site_rgba[self.env.eef_site_id] = np.array([0.0, 0.0, 0.0, 0.0])
+                self.env.sim.model.site_rgba[self.env.eef_cylinder_id] = np.array(
+                    [0.0, 0.0, 0.0, 0.0]
+                )
         if "states" in state:
             self.env.sim.set_state_from_flattened(state["states"])
             self.env.sim.forward()
@@ -248,18 +272,26 @@ class EnvRobosuite(EB.EnvBase):
         Get current environment observation dictionary.
 
         Args:
-            di (dict): current raw observation dictionary from robosuite to wrap and provide 
+            di (dict): current raw observation dictionary from robosuite to wrap and provide
                 as a dictionary. If not provided, will be queried from robosuite.
         """
         if di is None:
-            di = self.env._get_observations(force_update=True) if self._is_v1 else self.env._get_observation()
+            di = (
+                self.env._get_observations(force_update=True)
+                if self._is_v1
+                else self.env._get_observation()
+            )
         ret = {}
         for k in di:
-            if (k in ObsUtils.OBS_KEYS_TO_MODALITIES) and ObsUtils.key_is_obs_modality(key=k, obs_modality="rgb"):
+            if (k in ObsUtils.OBS_KEYS_TO_MODALITIES) and ObsUtils.key_is_obs_modality(
+                key=k, obs_modality="rgb"
+            ):
                 ret[k] = di[k][::-1]
                 if self.postprocess_visual_obs:
                     ret[k] = ObsUtils.process_obs(obs=ret[k], obs_key=k)
-            if (k in ObsUtils.OBS_KEYS_TO_MODALITIES) and ObsUtils.key_is_obs_modality(key=k, obs_modality="depth"):
+            if (k in ObsUtils.OBS_KEYS_TO_MODALITIES) and ObsUtils.key_is_obs_modality(
+                key=k, obs_modality="depth"
+            ):
                 depth_map = di[k][::-1]
                 depth_map = np.clip(depth_map, 0, 1)
                 ret[k] = get_real_depth_map(self.env.sim, depth_map)
@@ -285,12 +317,14 @@ class EnvRobosuite(EB.EnvBase):
                 cam_height = self.env.camera_heights[cam_idx]
                 cam_width = self.env.camera_widths[cam_idx]
                 ext_mat = get_camera_extrinsic_matrix(self.env.sim, camera_name)
-                int_mat = get_camera_intrinsic_matrix(self.env.sim, camera_name, cam_height, cam_width)
-                depth = di[f'{camera_name}_depth'][::-1]
+                int_mat = get_camera_intrinsic_matrix(
+                    self.env.sim, camera_name, cam_height, cam_width
+                )
+                depth = di[f"{camera_name}_depth"][::-1]
                 depth = np.clip(depth, 0, 1)
                 depth = get_real_depth_map(self.env.sim, depth)
                 depth = depth[:, :, 0]
-                color = di[f'{camera_name}_image'][::-1]
+                color = di[f"{camera_name}_image"][::-1]
                 # depth = ret[f'{camera_name}_depth'][:, :, 0]
                 # color = ret[f'{camera_name}_image']
                 # if camera_name != 'agentview':
@@ -302,20 +336,29 @@ class EnvRobosuite(EB.EnvBase):
 
                 # pose = np.linalg.inv(ext_mat)
                 pose = ext_mat
-                
+
                 trans_pcd = pose @ np.concatenate([pcd.T, np.ones((1, pcd.shape[0]))], axis=0)
                 trans_pcd = trans_pcd[:3, :].T
 
-                mask = (trans_pcd[:, 0] > workspace[0, 0]) * (trans_pcd[:, 0] < workspace[0, 1]) * (trans_pcd[:, 1] > workspace[1, 0]) * (trans_pcd[:, 1] < workspace[1, 1]) * (trans_pcd[:, 2] > workspace[2, 0]) * (trans_pcd[:, 2] < workspace[2, 1])
+                mask = (
+                    (trans_pcd[:, 0] > workspace[0, 0])
+                    * (trans_pcd[:, 0] < workspace[0, 1])
+                    * (trans_pcd[:, 1] > workspace[1, 0])
+                    * (trans_pcd[:, 1] < workspace[1, 1])
+                    * (trans_pcd[:, 2] > workspace[2, 0])
+                    * (trans_pcd[:, 2] < workspace[2, 1])
+                )
 
-                pcd_o3d = np2o3d(trans_pcd[mask], color.reshape(-1, 3)[mask].astype(np.float64) / 255)
+                pcd_o3d = np2o3d(
+                    trans_pcd[mask], color.reshape(-1, 3)[mask].astype(np.float64) / 255
+                )
 
                 all_pcds += pcd_o3d
 
                 # HACK: Hardcoding in instance-level segmentation for now
                 camera_segmentation_key = f"{camera_name}_segmentation_instance"
                 if camera_segmentation_key not in di:
-                  continue
+                    continue
 
                 # NOTE: Assuming same format as depth/color
                 segmentation_labels = di[camera_segmentation_key][::-1]
@@ -323,10 +366,17 @@ class EnvRobosuite(EB.EnvBase):
                 segmented_pc = o3d.geometry.PointCloud(pcd_o3d)
                 # HACK: Repeat because Open3d expects a 3-vector for colors and doesn't seem to
                 # offer any alternative...
-                segmented_pc.colors = o3d.utility.Vector3dVector(np.repeat(segmentation_labels, 3).reshape(-1, 3)[mask])
+                segmented_pc.colors = o3d.utility.Vector3dVector(
+                    np.repeat(segmentation_labels, 3).reshape(-1, 3)[mask]
+                )
                 segmented_pcds += segmented_pc
 
-            voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud_within_bounds(all_pcds, voxel_size=self.ws_size/voxel_size+1e-4, min_bound=voxel_bound[0], max_bound=voxel_bound[1])
+            voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud_within_bounds(
+                all_pcds,
+                voxel_size=self.ws_size / voxel_size + 1e-4,
+                min_bound=voxel_bound[0],
+                max_bound=voxel_bound[1],
+            )
             voxels = voxel_grid.get_voxels()  # returns list of voxels
             if len(voxels) == 0:
                 np_voxels = np.zeros([4, voxel_size, voxel_size, voxel_size], dtype=np.uint8)
@@ -351,7 +401,7 @@ class EnvRobosuite(EB.EnvBase):
             # # Create a 3D plot
             # fig = plt.figure()
             # ax = fig.add_subplot(111, projection='3d')
-            
+
             # # indices = np.argwhere(np_voxels[0] != 0)
             # # colors = np_voxels[1:, indices[:, 0], indices[:, 1], indices[:, 2]].T
 
@@ -367,15 +417,17 @@ class EnvRobosuite(EB.EnvBase):
             # plt.savefig('test2.png')
             # plt.close()
 
-            ret['voxels'] = np_voxels
+            ret["voxels"] = np_voxels
 
-            bounding_box = o3d.geometry.AxisAlignedBoundingBox(self.pc_workspace.T[0], self.pc_workspace.T[1])
+            bounding_box = o3d.geometry.AxisAlignedBoundingBox(
+                self.pc_workspace.T[0], self.pc_workspace.T[1]
+            )
             cropped_pcd = all_pcds.crop(bounding_box)
             cropped_segmented_pcd = segmented_pcds.crop(bounding_box)
             if len(cropped_pcd.points) == 0:
                 # create fake points
-                cropped_pcd.points = o3d.utility.Vector3dVector(np.array([[0., 0., 0.]]))
-                cropped_pcd.colors = o3d.utility.Vector3dVector(np.array([[0., 0., 0.]]))
+                cropped_pcd.points = o3d.utility.Vector3dVector(np.array([[0.0, 0.0, 0.0]]))
+                cropped_pcd.colors = o3d.utility.Vector3dVector(np.array([[0.0, 0.0, 0.0]]))
                 cropped_segmented_pcd = None
 
             if len(cropped_pcd.points) < 1024:
@@ -392,9 +444,9 @@ class EnvRobosuite(EB.EnvBase):
                 cropped_segmented_pcd = None
             sampled_pcds = cropped_pcd.farthest_point_down_sample(1024)
             if cropped_segmented_pcd is not None and len(cropped_segmented_pcd.points) > 0:
-              sampled_segmented_pcds = cropped_segmented_pcd.farthest_point_down_sample(1024)
+                sampled_segmented_pcds = cropped_segmented_pcd.farthest_point_down_sample(1024)
             else:
-              sampled_segmented_pcds = None
+                sampled_segmented_pcds = None
 
             # TODO: How to properly handle up/downsampling with segmentation?
             xyz = np.asarray(sampled_pcds.points)
@@ -422,10 +474,12 @@ class EnvRobosuite(EB.EnvBase):
             # raise RuntimeError
 
             if cropped_segmented_pcd is not None and len(cropped_segmented_pcd.points) > 0:
-              assert sampled_segmented_pcds is not None
-              ret['point_cloud'] = np.concatenate([xyz, color, np.asarray(sampled_segmented_pcds.colors)[:, :1]], 1)
+                assert sampled_segmented_pcds is not None
+                ret["point_cloud"] = np.concatenate(
+                    [xyz, color, np.asarray(sampled_segmented_pcds.colors)[:, :1]], 1
+                )
             else:
-              ret['point_cloud'] = np.concatenate([xyz, color, np.zeros((xyz.shape[0], 1))], 1)
+                ret["point_cloud"] = np.concatenate([xyz, color, np.zeros((xyz.shape[0], 1))], 1)
 
         if self._is_v1:
             for robot in self.env.robots:
@@ -433,8 +487,7 @@ class EnvRobosuite(EB.EnvBase):
                 # ensures that we don't accidentally add robot wrist images a second time
                 pf = robot.robot_model.naming_prefix
                 for k in di:
-                    if k.startswith(pf) and (k not in ret) and \
-                            (not k.endswith("proprio-state")):
+                    if k.startswith(pf) and (k not in ret) and (not k.endswith("proprio-state")):
                         ret[k] = np.array(di[k])
         else:
             # minimal proprioception for older versions of robosuite
@@ -448,8 +501,8 @@ class EnvRobosuite(EB.EnvBase):
         """
         Get current environment simulator state as a dictionary. Should be compatible with @reset_to.
         """
-        xml = self.env.sim.model.get_xml() # model xml file
-        state = np.array(self.env.sim.get_state().flatten()) # simulator state
+        xml = self.env.sim.model.get_xml()  # model xml file
+        state = np.array(self.env.sim.get_state().flatten())  # simulator state
         return dict(model=xml, states=state)
 
     def get_reward(self):
@@ -488,7 +541,7 @@ class EnvRobosuite(EB.EnvBase):
         if isinstance(succ, dict):
             assert "task" in succ
             return succ
-        return { "task" : succ }
+        return {"task": succ}
 
     @property
     def action_dimension(self):
@@ -529,23 +582,23 @@ class EnvRobosuite(EB.EnvBase):
             env_name=self.name,
             env_version=self.version,
             type=self.type,
-            env_kwargs=deepcopy(self._init_kwargs)
+            env_kwargs=deepcopy(self._init_kwargs),
         )
 
     @classmethod
     def create_for_data_processing(
-        cls, 
-        env_name, 
-        camera_names, 
-        camera_height, 
-        camera_width, 
-        reward_shaping, 
+        cls,
+        env_name,
+        camera_names,
+        camera_height,
+        camera_width,
+        reward_shaping,
         **kwargs,
     ):
         """
         Create environment for processing datasets, which includes extracting
         observations, labeling dense / sparse rewards, and annotating dones in
-        transitions. 
+        transitions.
 
         Args:
             env_name (str): name of environment
@@ -554,8 +607,8 @@ class EnvRobosuite(EB.EnvBase):
             camera_width (int): camera width for all cameras
             reward_shaping (bool): if True, use shaped environment rewards, else use sparse task completion rewards
         """
-        is_v1 = (robosuite.__version__.split(".")[0] == "1")
-        has_camera = (len(camera_names) > 0)
+        is_v1 = robosuite.__version__.split(".")[0] == "1"
+        has_camera = len(camera_names) > 0
 
         new_kwargs = {
             "reward_shaping": reward_shaping,
@@ -586,7 +639,7 @@ class EnvRobosuite(EB.EnvBase):
             image_modalities = ["rgb"]
         obs_modality_specs = {
             "obs": {
-                "low_dim": [], # technically unused, so we don't have to specify all of them
+                "low_dim": [],  # technically unused, so we don't have to specify all of them
                 "rgb": image_modalities,
                 "depth": depth_modalities,
             }
@@ -596,9 +649,9 @@ class EnvRobosuite(EB.EnvBase):
         # note that @postprocess_visual_obs is False since this env's images will be written to a dataset
         return cls(
             env_name=env_name,
-            render=False, 
-            render_offscreen=has_camera, 
-            use_image_obs=has_camera, 
+            render=False,
+            render_offscreen=has_camera,
+            use_image_obs=has_camera,
             postprocess_visual_obs=False,
             **kwargs,
         )
